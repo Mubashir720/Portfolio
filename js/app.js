@@ -28,17 +28,37 @@ const BOOT_LINES = [
   { text: '> launching portfolio...', cls: 'warn', ms: 2000 },
 ];
 
+/* Single guard — initAll must only ever fire once */
+let _bootDone = false;
+function onBootComplete() {
+  if (_bootDone) return;
+  _bootDone = true;
+  initAll();
+}
+
 async function runBoot() {
   const bootScreen = $('#bootScreen');
   const terminal   = $('#bootTerminal');
   const bar        = $('#bootBar');
-  if (!bootScreen) return;
+  if (!bootScreen) { onBootComplete(); return; }
 
   let skipped = false;
-  const skip = () => { skipped = true; };
-  document.addEventListener('keydown', skip, { once: true });
-  document.addEventListener('click',   skip, { once: true });
-  document.addEventListener('touchstart', skip, { once: true });
+
+  // ONE set of skip listeners — removed after use
+  function doSkip() {
+    if (skipped) return;
+    skipped = true;
+    cleanSkipListeners();
+    finishBoot();
+  }
+  function cleanSkipListeners() {
+    document.removeEventListener('keydown',    doSkip);
+    document.removeEventListener('click',      doSkip);
+    document.removeEventListener('touchstart', doSkip);
+  }
+  document.addEventListener('keydown',    doSkip, { once: true });
+  document.addEventListener('click',      doSkip, { once: true });
+  document.addEventListener('touchstart', doSkip, { once: true });
 
   const totalTime = 2300;
   const startTime = performance.now();
@@ -65,42 +85,21 @@ async function runBoot() {
     void el.offsetWidth; // reflow
   }
 
-  if (!skipped) await delay(400);
-
-  // Complete bar
-  bar.style.transition = 'width .3s ease';
-  bar.style.width = '100%';
-  await delay(350);
-
-  // Exit
-  bootScreen.classList.add('exit');
-  await delay(700);
-  bootScreen.remove();
-  document.removeEventListener('keydown', skip);
-  document.removeEventListener('click',   skip);
-  document.removeEventListener('touchstart', skip);
-  onBootComplete();
-}
-
-// Handle skip
-(function () {
-  const bootScreen = $('#bootScreen');
-  if (!bootScreen) return;
-  function skipNow() {
-    const bar = $('#bootBar');
-    if (bar) { bar.style.width = '100%'; }
-    setTimeout(() => {
-      bootScreen.classList.add('exit');
-      setTimeout(() => { bootScreen.remove(); onBootComplete(); }, 700);
-    }, 200);
+  if (!skipped) {
+    await delay(400);
+    finishBoot();
   }
-  document.addEventListener('keydown', skipNow, { once: true });
-  document.addEventListener('click',   skipNow, { once: true });
-  document.addEventListener('touchstart', skipNow, { once: true });
-})();
 
-function onBootComplete() {
-  initAll();
+  async function finishBoot() {
+    cleanSkipListeners();
+    bar.style.transition = 'width .3s ease';
+    bar.style.width = '100%';
+    await delay(350);
+    bootScreen.classList.add('exit');
+    await delay(700);
+    bootScreen.remove();
+    onBootComplete();
+  }
 }
 
 /* ═══════════════════════════════════
@@ -133,9 +132,11 @@ function initCursor() {
 /* ═══════════════════════════════════
    3. CANVAS — PARTICLE GRID
 ═══════════════════════════════════ */
+let _canvasRunning = false;
 function initCanvas() {
   const canvas = $('#heroCanvas');
-  if (!canvas) return;
+  if (!canvas || _canvasRunning) return;
+  _canvasRunning = true;
   const ctx = canvas.getContext('2d');
   let W, H, particles = [];
 
@@ -222,14 +223,12 @@ function initCanvas() {
 
 /* ═══════════════════════════════════
    4. TYPEWRITER — hero role
-   Uses a single setInterval tick at a
-   fixed 80ms base. Speed is controlled
-   by a holdCounter — no nested timers,
-   no stacking, immune to tab switches.
 ═══════════════════════════════════ */
+let _typewriterRunning = false;
 function initTypewriter() {
   const el = $('#typeTarget');
-  if (!el) return;
+  if (!el || _typewriterRunning) return;
+  _typewriterRunning = true;
 
   const roles = [
     'Full Stack Engineer',
@@ -238,46 +237,25 @@ function initTypewriter() {
     'Node.js Engineer',
     'AI/ML Integrator',
   ];
+  let ri = 0, ci = 0, deleting = false;
 
-  const TICK_MS    = 80;   // single fixed interval speed
-  const HOLD_TYPE  = 1;    // ticks to wait between each character typed
-  const HOLD_DEL   = 0;    // ticks to wait between each character deleted
-  const HOLD_PAUSE = 25;   // ticks to hold at end of word (~2 seconds)
-  const HOLD_GAP   = 5;    // ticks to pause before typing next word
-
-  let ri = 0, ci = 0;
-  let deleting = false;
-  let hold = 8; // initial delay before starting (8 × 80ms = 640ms)
-  let holdCount = 0;
-
-  setInterval(() => {
-    // If we're in a hold period, just count down and return
-    if (holdCount < hold) { holdCount++; return; }
-    holdCount = 0;
-    hold = 0;
-
+  function tick() {
     const current = roles[ri];
-
     if (deleting) {
-      ci--;
-      el.textContent = current.slice(0, ci);
-      hold = HOLD_DEL;
-      if (ci <= 0) {
-        ci = 0;
-        deleting = false;
-        ri = (ri + 1) % roles.length;
-        hold = HOLD_GAP;
-      }
+      el.textContent = current.slice(0, ci--);
+      if (ci < 0) { deleting = false; ri = (ri + 1) % roles.length; ci = 0; }
+      setTimeout(tick, 45);
     } else {
-      ci++;
-      el.textContent = current.slice(0, ci);
-      hold = HOLD_TYPE;
-      if (ci >= current.length) {
+      el.textContent = current.slice(0, ++ci);
+      if (ci === current.length) {
         deleting = true;
-        hold = HOLD_PAUSE;
+        setTimeout(tick, 2000);
+      } else {
+        setTimeout(tick, 65);
       }
     }
-  }, TICK_MS);
+  }
+  setTimeout(tick, 600);
 }
 
 /* ═══════════════════════════════════
