@@ -222,6 +222,8 @@ function initCanvas() {
 
 /* ═══════════════════════════════════
    4. TYPEWRITER — hero role
+   Fixed: single timer ID guard prevents
+   stacking when tab loses/regains focus
 ═══════════════════════════════════ */
 function initTypewriter() {
   const el = $('#typeTarget');
@@ -234,38 +236,57 @@ function initTypewriter() {
     'Node.js Engineer',
     'AI/ML Integrator',
   ];
-  let ri = 0, ci = 0, deleting = false, running = false;
+
+  let ri = 0, ci = 0, deleting = false;
+  let timerId = null;   // single timer — never two running at once
+  let paused  = false;  // pause when tab is hidden
 
   function tick() {
-    if (running) return; // prevent overlapping calls
-    running = true;
+    timerId = null; // clear so we know no timer is pending
+
+    if (paused) return; // tab hidden — stop until visible again
 
     const current = roles[ri];
 
     if (deleting) {
       ci = Math.max(0, ci - 1);
       el.textContent = current.slice(0, ci);
-      running = false;
       if (ci === 0) {
         deleting = false;
         ri = (ri + 1) % roles.length;
-        setTimeout(tick, 400); // pause before typing next word
+        schedule(400); // pause before typing next word
       } else {
-        setTimeout(tick, 50); // delete speed
+        schedule(40);
       }
     } else {
       ci = Math.min(current.length, ci + 1);
       el.textContent = current.slice(0, ci);
-      running = false;
       if (ci === current.length) {
         deleting = true;
-        setTimeout(tick, 2200); // pause at full word
+        schedule(2000); // hold the completed word
       } else {
-        setTimeout(tick, 80); // type speed
+        schedule(65);
       }
     }
   }
-  setTimeout(tick, 800);
+
+  function schedule(ms) {
+    if (timerId !== null) return; // already scheduled — don't stack
+    timerId = setTimeout(tick, ms);
+  }
+
+  // Pause/resume when tab visibility changes — prevents timer pile-up
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      paused = true;
+      if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+    } else {
+      paused = false;
+      schedule(200); // short delay then resume cleanly
+    }
+  });
+
+  schedule(800); // initial start
 }
 
 /* ═══════════════════════════════════
