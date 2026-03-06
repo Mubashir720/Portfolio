@@ -234,25 +234,38 @@ function initTypewriter() {
     'Node.js Engineer',
     'AI/ML Integrator',
   ];
-  let ri = 0, ci = 0, deleting = false;
+  let ri = 0, ci = 0, deleting = false, running = false;
 
-  async function tick() {
+  function tick() {
+    if (running) return; // prevent overlapping calls
+    running = true;
+
     const current = roles[ri];
+
     if (deleting) {
-      el.textContent = current.slice(0, ci--);
-      if (ci < 0) { deleting = false; ri = (ri + 1) % roles.length; ci = 0; }
-      setTimeout(tick, 45);
+      ci = Math.max(0, ci - 1);
+      el.textContent = current.slice(0, ci);
+      running = false;
+      if (ci === 0) {
+        deleting = false;
+        ri = (ri + 1) % roles.length;
+        setTimeout(tick, 400); // pause before typing next word
+      } else {
+        setTimeout(tick, 50); // delete speed
+      }
     } else {
-      el.textContent = current.slice(0, ++ci);
+      ci = Math.min(current.length, ci + 1);
+      el.textContent = current.slice(0, ci);
+      running = false;
       if (ci === current.length) {
         deleting = true;
-        setTimeout(tick, 2000);
+        setTimeout(tick, 2200); // pause at full word
       } else {
-        setTimeout(tick, 65);
+        setTimeout(tick, 80); // type speed
       }
     }
   }
-  setTimeout(tick, 600);
+  setTimeout(tick, 800);
 }
 
 /* ═══════════════════════════════════
