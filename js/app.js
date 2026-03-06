@@ -222,8 +222,10 @@ function initCanvas() {
 
 /* ═══════════════════════════════════
    4. TYPEWRITER — hero role
-   Fixed: single timer ID guard prevents
-   stacking when tab loses/regains focus
+   Uses a single setInterval tick at a
+   fixed 80ms base. Speed is controlled
+   by a holdCounter — no nested timers,
+   no stacking, immune to tab switches.
 ═══════════════════════════════════ */
 function initTypewriter() {
   const el = $('#typeTarget');
@@ -237,56 +239,45 @@ function initTypewriter() {
     'AI/ML Integrator',
   ];
 
-  let ri = 0, ci = 0, deleting = false;
-  let timerId = null;   // single timer — never two running at once
-  let paused  = false;  // pause when tab is hidden
+  const TICK_MS    = 80;   // single fixed interval speed
+  const HOLD_TYPE  = 1;    // ticks to wait between each character typed
+  const HOLD_DEL   = 0;    // ticks to wait between each character deleted
+  const HOLD_PAUSE = 25;   // ticks to hold at end of word (~2 seconds)
+  const HOLD_GAP   = 5;    // ticks to pause before typing next word
 
-  function tick() {
-    timerId = null; // clear so we know no timer is pending
+  let ri = 0, ci = 0;
+  let deleting = false;
+  let hold = 8; // initial delay before starting (8 × 80ms = 640ms)
+  let holdCount = 0;
 
-    if (paused) return; // tab hidden — stop until visible again
+  setInterval(() => {
+    // If we're in a hold period, just count down and return
+    if (holdCount < hold) { holdCount++; return; }
+    holdCount = 0;
+    hold = 0;
 
     const current = roles[ri];
 
     if (deleting) {
-      ci = Math.max(0, ci - 1);
+      ci--;
       el.textContent = current.slice(0, ci);
-      if (ci === 0) {
+      hold = HOLD_DEL;
+      if (ci <= 0) {
+        ci = 0;
         deleting = false;
         ri = (ri + 1) % roles.length;
-        schedule(400); // pause before typing next word
-      } else {
-        schedule(40);
+        hold = HOLD_GAP;
       }
     } else {
-      ci = Math.min(current.length, ci + 1);
+      ci++;
       el.textContent = current.slice(0, ci);
-      if (ci === current.length) {
+      hold = HOLD_TYPE;
+      if (ci >= current.length) {
         deleting = true;
-        schedule(2000); // hold the completed word
-      } else {
-        schedule(65);
+        hold = HOLD_PAUSE;
       }
     }
-  }
-
-  function schedule(ms) {
-    if (timerId !== null) return; // already scheduled — don't stack
-    timerId = setTimeout(tick, ms);
-  }
-
-  // Pause/resume when tab visibility changes — prevents timer pile-up
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      paused = true;
-      if (timerId !== null) { clearTimeout(timerId); timerId = null; }
-    } else {
-      paused = false;
-      schedule(200); // short delay then resume cleanly
-    }
-  });
-
-  schedule(800); // initial start
+  }, TICK_MS);
 }
 
 /* ═══════════════════════════════════
